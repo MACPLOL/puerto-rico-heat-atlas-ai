@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://macplol.github.io/puerto-rico-heat-atlas-ai/sitemap.xml
