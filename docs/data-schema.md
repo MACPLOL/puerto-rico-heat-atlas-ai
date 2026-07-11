@@ -52,3 +52,17 @@ name, thresholds, quality and baseline settings, units, and the scientific
 limitation statement. No absolute machine paths are included.
 
 These are temperature-only project metrics. They are not official heat index, WBGT, or official “feels-like temperature” measurements: the historical input does not supply the humidity, wind, solar radiation, or cloud observations needed for those calculations.
+
+## Canonical raw observations and complete years
+
+`data/raw/noaa_daily.csv` is the refresh pipeline's canonical raw format. It
+uses the schema and explicit Celsius-unit rule documented in
+[data provenance](data-provenance.md). A station/date is unique; a newer NOAA
+record for that key replaces an older one. Rows are sorted by station ID then
+date.
+
+The map emits only completed calendar years. Downloaded observations for the
+current calendar year are retained in canonical raw data, but are excluded from
+the annual GeoJSON and summary, even if they happen to pass the 200 paired-day
+minimum. This prevents partial year-to-date data from being compared or labeled
+as a complete historical year.
