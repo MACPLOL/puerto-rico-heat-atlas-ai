@@ -49,6 +49,37 @@ The frontend lives in `src/`; its modules load the canonical map assets from
 remain the independent NOAA processing and refresh pipeline; the frontend
 build neither moves nor regenerates its data files.
 
+### Product features and shared links
+
+The dashboard is available in English and Spanish. Use the language selector,
+then share the current view with the **Share** button. Links preserve the
+station, year, metric, units, and language in a static-hosting-safe query
+string:
+
+```
+?station=RQW00011641&year=2025&metric=hot_days_32&units=F&lang=en
+```
+
+Invalid values safely fall back to an available station or default setting.
+Period-change metrics omit `year`, because it has no meaningful single-year
+value. The station search accepts friendly public names and NOAA source names,
+is case-insensitive, and also ignores accents (for example, `Mayaguez` can
+find `Mayagüez` where present). Friendly names are centralized in the frontend
+while the selected station’s original NOAA name and ID remain available in its
+**Source details** disclosure.
+
+The page includes a skip link, landmarks, visible keyboard focus, a keyboard
+operable search, live status announcements, an accessible About dialog, and a
+non-map way to choose every published station. Leaflet maps have inherent
+accessibility limitations; the search is the equivalent station-selection
+control. The application does not claim WCAG certification.
+
+Before deployment, run `npm run build` and `npm run preview`. Vite packages
+the canonical GeoJSON assets into `dist/`, uses repository-compatible asset
+URLs, and needs no frontend secrets or backend routes; refreshing a shared
+query-string URL works on static hosting such as GitHub Pages. Keep `dist/`
+ignored and confirm OpenStreetMap attribution remains visible.
+
 ## Refresh historical NOAA data
 
 Historical temperature data comes from the official NOAA/NCEI Daily Summaries
@@ -153,6 +184,9 @@ For a quick manual map check:
 2. Move the slider and choose each metric; stations without data for a selected year should disappear without an error.
 3. Press **Play** and then **Pause**. Open a station marker to confirm its popup and trend chart render.
 4. Change temperature units and use **Reset view** to confirm the controls still work.
+5. Search each published station using its friendly name and a NOAA source-name fragment; use Arrow keys, Enter, and Escape in the results.
+6. Switch to Español, confirm the page language and controls update, and share the resulting URL. Reload it to confirm the selection is restored.
+7. Open **About the data**, use Escape to close it, and check the page at 320px and 360px widths for horizontal overflow.
 
 ## Repository layout
 
