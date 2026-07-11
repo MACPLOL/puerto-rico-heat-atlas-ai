@@ -47,6 +47,22 @@
       overflow: hidden;
     }
 
+    .app-status {
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid var(--ui-border);
+      border-left: 4px solid #4575b4;
+      border-radius: 8px;
+      box-shadow: var(--ui-shadow);
+      color: var(--ui-text);
+      font: 12px/1.35 var(--ui-font);
+      max-width: 330px;
+      padding: 9px 11px;
+    }
+    .app-status:empty { display: none; }
+    .app-status .error { border-left-color: #b2182b; }
+    .app-status .warning { border-left-color: #f4a261; }
+    .app-status p { margin: 3px 0; }
+
     .legend::before,
     .slider-wrap::before,
     .metric-wrap::before,
@@ -241,6 +257,7 @@ let currentMetric = 'hot_days_32';  // default metric
 let tempUnit = 'F';                 // 'F' or 'C' for display
 let playInterval = null;
 let isPlaying = false;
+const statusMessages = {};
 
 const PLAY_INTERVAL_MS = 900;
 
@@ -253,6 +270,37 @@ const DELTA_PERIODS = {
 
 function monthNameFromIndex(idx) {
   return MONTH_NAMES[idx] || `Month ${idx}`;
+}
+
+function setStatus(key, message, kind = 'info') {
+  if (message) statusMessages[key] = { message, kind };
+  else delete statusMessages[key];
+  const status = document.getElementById('appStatus');
+  if (!status) return;
+  status.replaceChildren();
+  for (const entry of Object.values(statusMessages)) {
+    const item = document.createElement('p');
+    item.className = entry.kind;
+    item.textContent = entry.message;
+    status.appendChild(item);
+  }
+}
+
+async function fetchGeoJSON(url, label) {
+  let response;
+  try {
+    response = await fetch(url);
+  } catch (error) {
+    throw new Error(`Could not load ${label}. Check your connection and that ${url} exists.`);
+  }
+  if (!response.ok) {
+    throw new Error(`Could not load ${label} (HTTP ${response.status}). Check that ${url} exists.`);
+  }
+  try {
+    return await response.json();
+  } catch (error) {
+    throw new Error(`${label} is not valid JSON. Rebuild or replace ${url}.`);
+  }
 }
 
 // --- [2] Temperature helpers (display only, data stays in °C) ---
@@ -470,15 +518,27 @@ const InfoCardControl = L.Control.extend({
 });
 map.addControl(new InfoCardControl());
 
+const StatusControl = L.Control.extend({
+  options: { position: 'topleft' },
+  onAdd: function () {
+    const div = L.DomUtil.create('div', 'app-status');
+    div.id = 'appStatus';
+    L.DomEvent.disableClickPropagation(div);
+    return div;
+  }
+});
+map.addControl(new StatusControl());
+
 function updateInfoCard() {
   const div = document.getElementById('infoCard');
   if (div) div.innerHTML = infoCardHTML();
 }
 
 // --- [4] Data layers: Puerto Rico boundary ---
-fetch('data/pr_boundary.geojson')
-  .then(r => r.json())
+setStatus('boundary', 'Loading Puerto Rico boundary…');
+fetchGeoJSON('data/pr_boundary.geojson', 'the Puerto Rico boundary')
   .then(geo => {
+    if (geo.type !== 'FeatureCollection') throw new Error('The Puerto Rico boundary file is not a GeoJSON FeatureCollection.');
     const prBoundary = L.geoJSON(geo, {
       style: { color: '#333', weight: 2, fill: false },
       onEachFeature: (f, layer) => {
@@ -489,8 +549,12 @@ fetch('data/pr_boundary.geojson')
 
     layerControl.addOverlay(prBoundary, 'Puerto Rico boundary');
     map.fitBounds(prBoundary.getBounds(), { padding: [12, 12] });
+    setStatus('boundary', '');
   })
-  .catch(err => console.error('Failed to load PR boundary:', err));
+  .catch(err => {
+    console.error('Failed to load PR boundary:', err);
+    setStatus('boundary', err.message, 'error');
+  });
 
 // --- [4] Data styling: color scale + metric value ---
 function getColorForValue(v) {
@@ -600,6 +664,7 @@ function redrawStations() {
   stationLayer.clearLayers();
   stationLayer.addData(stationsData);
   updateCoverageLabel();
+  updateDataAvailability();
 }
 
 function drawStationsForYear(year) {
@@ -644,13 +709,15 @@ function initTimeSlider(years) {
 
   label.textContent = years[0];
 
-  range.addEventListener('input', () => {
-    const idx = Number(range.value);
-    const year = years[idx];
-    label.textContent = year;
-    console.log('Selected year:', year);
-    drawStationsForYear(year);
-  });
+  if (range.dataset.initialized !== 'true') {
+    range.addEventListener('input', () => {
+      const idx = Number(range.value);
+      const year = YEARS[idx];
+      label.textContent = year;
+      drawStationsForYear(year);
+    });
+    range.dataset.initialized = 'true';
+  }
 
   updateTimeSliderAvailability();
   updateCoverageLabel();
@@ -760,6 +827,19 @@ function updateCoverageLabel() {
     ? '2006-2025 minus 1961-1980'
     : `Year ${currentYear ?? 'n/a'}`;
   label.textContent = `Coverage (${scope}): ${withData}/${total} stations (${pct}%)`;
+}
+
+function updateDataAvailability() {
+  if (!stationsData || !currentMetric) return;
+  const { withData } = computeCoverage();
+  if (withData) {
+    setStatus('selection', '');
+    return;
+  }
+  const period = currentMetric.startsWith('delta_')
+    ? 'the 2006–2025 minus 1961–1980 comparison'
+    : `year ${currentYear}`;
+  setStatus('selection', `No station data is available for ${metricLabel(currentMetric)} in ${period}.`, 'warning');
 }
 
 // --- [5] Controls: metric selector ---
@@ -927,22 +1007,39 @@ function renderStationChart(feature, canvasId) {
   });
 }
 
+function collectAvailableYears(features) {
+  const years = new Set();
+  for (const feature of features) {
+    const metrics = feature?.properties?.metrics || {};
+    for (const [metricName, values] of Object.entries(metrics)) {
+      if (metricName.startsWith('delta_') || !values || typeof values !== 'object') continue;
+      for (const year of Object.keys(values)) {
+        if (/^\d{4}$/.test(year)) years.add(Number(year));
+      }
+    }
+  }
+  return [...years].sort((a, b) => a - b).map(String);
+}
+
 // --- [7] Data loading + initialization ---
-fetch('data/stations_heatmetrics_all.geojson')
-  .then(r => r.json())
+setStatus('stations', 'Loading station data…');
+fetchGeoJSON('data/stations_heatmetrics_all.geojson', 'station data')
   .then(geo => {
     stationsData = geo;
-    console.log('Loaded stations metrics:', stationsData);
-
+    if (stationsData.type !== 'FeatureCollection' || !Array.isArray(stationsData.features)) {
+      throw new Error('Station data must be a GeoJSON FeatureCollection with a features list.');
+    }
     if (!stationsData.features.length) {
-      console.warn('No features in stations_heatmetrics_all.geojson');
+      setStatus('stations', 'Station data loaded, but it contains no stations.', 'warning');
       return;
     }
 
-    // Use hot_days_32 (or 35) of first feature to infer year range
-    const firstMetrics = stationsData.features[0].properties.metrics;
-    const ref = firstMetrics.hot_days_32 || firstMetrics.hot_days_35;
-    YEARS = Object.keys(ref).sort();
+    // Use the sorted union: stations can have different observation years.
+    YEARS = collectAvailableYears(stationsData.features);
+    if (!YEARS.length) {
+      setStatus('stations', 'Station data loaded, but no valid four-digit year keys were found.', 'warning');
+      return;
+    }
     currentYear = YEARS[0];
 
     // Create a single persistent station layer and register it as overlay
@@ -958,8 +1055,12 @@ fetch('data/stations_heatmetrics_all.geojson')
     // Fill it with data for the initial year/metric
     redrawStations();
     initTimeSlider(YEARS);
+    setStatus('stations', '');
   })
-  .catch(err => console.error('Failed to load stations metrics:', err));
+  .catch(err => {
+    console.error('Failed to load station metrics:', err);
+    setStatus('stations', err.message, 'error');
+  });
 
 </script>
 
