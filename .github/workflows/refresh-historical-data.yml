@@ -1,0 +1,44 @@
+name: Refresh historical NOAA data
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install project and test dependencies
+        run: python -m pip install -e ".[test]"
+      - name: Test and refresh official data
+        run: |
+          python -m pytest -q
+          python scripts/refresh_data.py --skip-tests
+      - name: Open a data-update pull request when outputs changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- data/raw/noaa_daily.csv data/stations_heatmetrics_all.geojson data/station_summary.csv; then
+            echo "No generated data changes."
+            exit 0
+          fi
+          branch="automated/noaa-daily-refresh-${{ github.run_id }}"
+          git switch -c "$branch"
+          git add data/raw/noaa_daily.csv data/stations_heatmetrics_all.geojson data/station_summary.csv
+          git diff --cached --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(data): refresh NOAA daily observations"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" --title "chore(data): refresh NOAA daily observations" --body "Automated weekly refresh from NOAA/NCEI Daily Summaries."
