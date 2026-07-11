@@ -20,11 +20,6 @@ BASELINE_END_YEAR = 2020
 MIN_BASELINE_YEARS = 20
 MIN_PERCENTILE_YEARS = 10
 
-BAD_STATIONS = {
-    "ADJUNTAS 2 NW, PR US",
-    "MAYAGUEZ AIRPORT, PR US",
-    "MAYAGUEZ ARRIBA, PR RQ",
-}
 FRIENDLY_NAMES = {
     "SAN JUAN L M MARIN INTERNATIONAL AIRPORT, PR US": "San Juan (Airport)",
     "PONCE 4 E, PR US": "Ponce",
@@ -149,12 +144,14 @@ def add_change_metrics(metrics: dict[str, dict]) -> None:
             metrics[target] = {"late_minus_early": late - early}
 
 
-def feature_collection(features: list[dict], source_filename: str | None = None) -> dict:
+def feature_collection(features: list[dict], source_filename: str | None = None, generated_at_utc: str | None = None) -> dict:
     """Build valid GeoJSON, including portable dataset-level provenance metadata."""
     result = {"type": "FeatureCollection", "features": features}
     if source_filename is not None:
         result.update({
-            "generated_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            # A source-data marker is deterministic, so a no-change refresh
+            # does not manufacture a generated-file diff solely from a clock.
+            "generated_at_utc": generated_at_utc or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "source_filename": source_filename,
             "threshold_definitions": {"hot_day": "TMAX >= 32 C", "very_hot_day": "TMAX >= 35 C", "warm_night": "TMIN >= 24 C", "oppressive_day": "TMAX >= 32 C and TMIN >= 24 C (project-defined proxy)"},
             "minimum_valid_days": MIN_DAYS_PER_YEAR,
@@ -167,35 +164,39 @@ def feature_collection(features: list[dict], source_filename: str | None = None)
 
 
 def read_observations(input_csv: str) -> tuple[pd.DataFrame, str]:
-    """Read the primary export and its checked-in San Juan supplemental export.
+    """Read one documented input CSV without station-specific side files.
 
-    The all-stations export does not contain station RQW00011641, although it
-    is part of the published seven-station dashboard dataset.  Including the
-    supplied supplemental file preserves that documented coverage.
+    Canonical NOAA data declares ``UNITS=C``.  The pre-Phase-3 legacy export
+    has no units column and is documented as Fahrenheit, so its conversion is
+    explicit and never guessed from temperature magnitude.
     """
     input_path = Path(input_csv)
-    frames = [pd.read_csv(input_path, parse_dates=["DATE"])]
-    source_names = [input_path.name]
-    supplemental = input_path.parent / "raw" / "san_juan_1960_2025.csv"
-    if input_path.name == "all_stations_1960_2025.csv" and supplemental.exists():
-        frames.append(pd.read_csv(supplemental, parse_dates=["DATE"]))
-        source_names.append(supplemental.name)
-    return pd.concat(frames, ignore_index=True), "; ".join(source_names)
+    return pd.read_csv(input_path, parse_dates=["DATE"]), input_path.name
 
 
-def main(input_csv: str, output_geojson: str) -> None:
+def main(input_csv: str, output_geojson: str, *, current_year: int | None = None) -> None:
     df, source_filename = read_observations(input_csv)
-    if "NAME" in df:
-        df = df[~df["NAME"].isin(BAD_STATIONS)].copy()
     required = ["STATION", "NAME", "LATITUDE", "LONGITUDE", "DATE", "TMAX", "TMIN"]
     for column in required:
         if column not in df:
             raise SystemExit(f"Missing required column '{column}' in {input_csv}")
-    df = df[required].copy()
-    df["TMAX_C"] = fahrenheit_to_celsius(df["TMAX"])
-    df["TMIN_C"] = fahrenheit_to_celsius(df["TMIN"])
+    unit_column = ["UNITS"] if "UNITS" in df else []
+    df = df[required + unit_column].copy()
+    if "UNITS" in df:
+        declared_units = set(df["UNITS"].dropna().astype(str).str.upper())
+        if declared_units != {"C"}:
+            raise SystemExit("Canonical input must explicitly declare Celsius (UNITS=C)")
+        df["TMAX_C"] = pd.to_numeric(df["TMAX"], errors="coerce")
+        df["TMIN_C"] = pd.to_numeric(df["TMIN"], errors="coerce")
+    else:
+        # Legacy all_stations_1960_2025.csv is a known Fahrenheit export.
+        df["TMAX_C"] = fahrenheit_to_celsius(pd.to_numeric(df["TMAX"], errors="coerce"))
+        df["TMIN_C"] = fahrenheit_to_celsius(pd.to_numeric(df["TMIN"], errors="coerce"))
     df["year"] = df["DATE"].dt.year
     df["month"] = df["DATE"].dt.month
+    current_year = datetime.now(timezone.utc).year if current_year is None else current_year
+    # A partial calendar year must never appear among completed annual metrics.
+    df = df[df["year"] != current_year].copy()
     features = []
     for station_id, station in df.groupby("STATION"):
         station = station.sort_values("DATE").copy()
@@ -213,7 +214,8 @@ def main(input_csv: str, output_geojson: str) -> None:
         properties = {"id": station_id, "name": FRIENDLY_NAMES.get(station["NAME"].iloc[0], station["NAME"].iloc[0]), "country": "Puerto Rico", "data_start_year": years[0], "data_end_year": years[-1], "valid_year_count": len(years), "metrics": metrics}
         features.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [float(station["LONGITUDE"].iloc[0]), float(station["LATITUDE"].iloc[0])]}, "properties": properties})
     with open(output_geojson, "w", encoding="utf-8") as output:
-        json.dump(feature_collection(features, source_filename), output, ensure_ascii=False, indent=2)
+        source_marker = f"{df['DATE'].max().date().isoformat()}T00:00:00Z" if not df.empty else None
+        json.dump(feature_collection(features, source_filename, source_marker), output, ensure_ascii=False, indent=2)
     print(f"Saved {len(features)} station(s) to {output_geojson}")
 
 

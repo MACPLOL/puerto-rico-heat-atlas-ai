@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "source_dataset": "NOAA/NCEI Daily Summaries (GHCN-Daily)",
+  "stations": [
+    {"id": "RQC00660158", "display_name": "Aibonito", "name": "AIBONITO 1 S, PR US", "latitude": 18.128, "longitude": -66.2641, "elevation_m": 710.2, "dataset": "daily-summaries", "active": true, "published": true},
+    {"id": "RQC00660410", "display_name": "Arecibo", "name": "ARECIBO 3 ESE, PR US", "latitude": 18.45333, "longitude": -66.67472, "elevation_m": 3.0, "dataset": "daily-summaries", "active": true, "published": true},
+    {"id": "RQC00660426", "display_name": "Arecibo Observatory", "name": "ARECIBO OBSERVATORY, PR US", "latitude": 18.3494, "longitude": -66.7525, "elevation_m": 323.1, "dataset": "daily-summaries", "active": true, "published": true},
+    {"id": "RQC00663657", "display_name": "Fajardo", "name": "FAJARDO, PR US", "latitude": 18.33424, "longitude": -65.6529, "elevation_m": 19.2, "dataset": "daily-summaries", "active": true, "published": true},
+    {"id": "RQC00667292", "display_name": "Ponce", "name": "PONCE 4 E, PR US", "latitude": 18.0258, "longitude": -66.5252, "elevation_m": 21.3, "dataset": "daily-summaries", "active": true, "published": true},
+    {"id": "RQW00011630", "display_name": "Ceiba (Roosevelt Roads)", "name": "ROOSEVELT ROADS, PR US", "latitude": 18.2552, "longitude": -65.6411, "elevation_m": 10.1, "dataset": "daily-summaries", "active": true, "published": true, "notes": "Historical station retained even if no new observations are returned."},
+    {"id": "RQW00011641", "display_name": "San Juan (Airport)", "name": "SAN JUAN L M MARIN INTERNATIONAL AIRPORT, PR US", "latitude": 18.43261, "longitude": -66.01065, "elevation_m": 3.0, "dataset": "daily-summaries", "active": true, "published": true, "notes": "Fetched through the same registry and NOAA endpoint as every other station."}
+  ]
+}
