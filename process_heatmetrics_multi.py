@@ -28,6 +28,51 @@ FRIENDLY_NAMES = {
     # add/edit as you like
 }
 
+METRIC_NAMES = (
+    "hot_days_32",
+    "hot_days_35",
+    "warm_nights_24",
+    "oppressive_days",
+    "hottest_month_index",
+    "hottest_month_tmax",
+    "hottest_month_tmin",
+)
+
+
+def fahrenheit_to_celsius(value):
+    """Convert a Fahrenheit number or pandas Series to Celsius."""
+    return (value - 32.0) * 5.0 / 9.0
+
+
+def calculate_year_metrics(year_data: pd.DataFrame) -> dict | None:
+    """Return temperature-only metrics for one year, or None if incomplete."""
+    valid = year_data.dropna(subset=["TMAX_C", "TMIN_C"])
+    if len(valid) < MIN_DAYS_PER_YEAR:
+        return None
+
+    hottest_month = int(valid.groupby("month")["TMAX_C"].mean().idxmax())
+    monthly = valid.groupby("month").agg(
+        tmax_mean=("TMAX_C", "mean"),
+        tmin_mean=("TMIN_C", "mean"),
+    )
+    return {
+        "hot_days_32": int((valid["TMAX_C"] >= HOT_DAY_32).sum()),
+        "hot_days_35": int((valid["TMAX_C"] >= HOT_DAY_35).sum()),
+        "warm_nights_24": int((valid["TMIN_C"] >= WARM_NIGHT_24).sum()),
+        "oppressive_days": int(
+            ((valid["TMAX_C"] >= HOT_DAY_32) & (valid["TMIN_C"] >= WARM_NIGHT_24)).sum()
+        ),
+        "hottest_month_index": hottest_month,
+        "hottest_month_tmax": float(monthly.loc[hottest_month, "tmax_mean"]),
+        "hottest_month_tmin": float(monthly.loc[hottest_month, "tmin_mean"]),
+    }
+
+
+def feature_collection(features: list[dict]) -> dict:
+    """Build the GeoJSON container used by the dashboard."""
+    return {"type": "FeatureCollection", "features": features}
+
+
 # ---------- MAIN LOGIC ----------
 
 def main(input_csv: str, output_geojson: str) -> None:
@@ -46,14 +91,9 @@ def main(input_csv: str, output_geojson: str) -> None:
 
     df = df[required]
 
-    # Remove rows with missing TMAX or TMIN
-    df = df.dropna(subset=["TMAX", "TMIN"]).copy()
-    if df.empty:
-        raise SystemExit("No non-missing TMAX/TMIN values in file.")
-
     # Convert Fahrenheit to Celsius (CDO “Standard” units are °F)
-    df["TMAX_C"] = (df["TMAX"] - 32.0) * 5.0 / 9.0
-    df["TMIN_C"] = (df["TMIN"] - 32.0) * 5.0 / 9.0
+    df["TMAX_C"] = fahrenheit_to_celsius(df["TMAX"])
+    df["TMIN_C"] = fahrenheit_to_celsius(df["TMIN"])
 
     # Precompute year and month
     df["year"] = df["DATE"].dt.year
@@ -70,51 +110,15 @@ def main(input_csv: str, output_geojson: str) -> None:
         lon = float(g["LONGITUDE"].iloc[0])
 
         # metrics[metric_name][year_str] = value
-        metrics = {
-            "hot_days_32": {},
-            "hot_days_35": {},
-            "warm_nights_24": {},
-            "oppressive_days": {},
-            "hottest_month_index": {},
-            "hottest_month_tmax": {},
-            "hottest_month_tmin": {},
-        }
+        metrics = {name: {} for name in METRIC_NAMES}
 
         for year, gy in g.groupby("year"):
-            # Skip incomplete years
-            if gy["TMAX_C"].notna().sum() < MIN_DAYS_PER_YEAR:
+            year_metrics = calculate_year_metrics(gy)
+            if year_metrics is None:
                 continue
-
             year_str = str(year)
-
-            # --- Day / night threshold counts ---
-            hot32 = int((gy["TMAX_C"] >= HOT_DAY_32).sum())
-            hot35 = int((gy["TMAX_C"] >= HOT_DAY_35).sum())
-            wn24  = int((gy["TMIN_C"] >= WARM_NIGHT_24).sum())
-            opp   = int(
-                ((gy["TMAX_C"] >= HOT_DAY_32) & (gy["TMIN_C"] >= WARM_NIGHT_24)).sum()
-            )
-
-            metrics["hot_days_32"][year_str] = hot32
-            metrics["hot_days_35"][year_str] = hot35
-            metrics["warm_nights_24"][year_str] = wn24
-            metrics["oppressive_days"][year_str] = opp
-
-            # --- Hottest month stats for that year ---
-            monthly = gy.groupby("month").agg(
-                tmax_mean=("TMAX_C", "mean"),
-                tmin_mean=("TMIN_C", "mean"),
-            )
-
-            # month index (1–12) with highest mean TMAX
-            hottest_month = int(monthly["tmax_mean"].idxmax())
-            metrics["hottest_month_index"][year_str] = hottest_month
-            metrics["hottest_month_tmax"][year_str] = float(
-                monthly.loc[hottest_month, "tmax_mean"]
-            )
-            metrics["hottest_month_tmin"][year_str] = float(
-                monthly.loc[hottest_month, "tmin_mean"]
-            )
+            for metric_name, value in year_metrics.items():
+                metrics[metric_name][year_str] = value
 
         # If station has no valid years, skip it
         if not metrics["hot_days_32"]:
@@ -158,7 +162,7 @@ def main(input_csv: str, output_geojson: str) -> None:
             }
         )
 
-    fc = {"type": "FeatureCollection", "features": features}
+    fc = feature_collection(features)
 
     with open(output_geojson, "w", encoding="utf-8") as f:
         json.dump(fc, f, ensure_ascii=False, indent=2)

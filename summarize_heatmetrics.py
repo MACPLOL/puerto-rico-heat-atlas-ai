@@ -1,3 +1,4 @@
+import csv
 import sys, json
 from pathlib import Path
 import statistics as stats
@@ -17,38 +18,30 @@ def mean_for_range(d, start, end):
 
 def main(geojson_path, out_csv):
     data = json.loads(Path(geojson_path).read_text(encoding="utf-8"))
-    rows = []
     header = [
         "name", "id",
         "first_year", "last_year",
         "mean_hot32_early", "mean_hot32_late",
         "mean_warm24_early", "mean_warm24_late"
     ]
-    rows.append(",".join(header))
-
-    for feat in data["features"]:
-        props = feat["properties"]
-        metrics = props["metrics"]
-        hot32 = metrics.get("hot_days_32", {})
-        warm24 = metrics.get("warm_nights_24", {})
-
-        years = sorted(int(y) for y in hot32.keys())
-        first_year = years[0]
-        last_year  = years[-1]
-
-        row = [
-            props.get("name", ""),
-            props.get("id", ""),
-            str(first_year),
-            str(last_year),
-            str(mean_for_range(hot32, EARLY_START, EARLY_END)),
-            str(mean_for_range(hot32, LATE_START, LATE_END)),
-            str(mean_for_range(warm24, EARLY_START, EARLY_END)),
-            str(mean_for_range(warm24, LATE_START, LATE_END)),
-        ]
-        rows.append(",".join(row))
-
-    Path(out_csv).write_text("\n".join(rows), encoding="utf-8")
+    with Path(out_csv).open("w", encoding="utf-8", newline="") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(header)
+        for feat in data["features"]:
+            props = feat["properties"]
+            metrics = props["metrics"]
+            hot32 = metrics.get("hot_days_32", {})
+            warm24 = metrics.get("warm_nights_24", {})
+            years = sorted(int(y) for y in hot32.keys())
+            if not years:
+                continue
+            writer.writerow([
+                props.get("name", ""), props.get("id", ""), years[0], years[-1],
+                mean_for_range(hot32, EARLY_START, EARLY_END),
+                mean_for_range(hot32, LATE_START, LATE_END),
+                mean_for_range(warm24, EARLY_START, EARLY_END),
+                mean_for_range(warm24, LATE_START, LATE_END),
+            ])
     print(f"Saved summary to {out_csv}")
 
 if __name__ == "__main__":
