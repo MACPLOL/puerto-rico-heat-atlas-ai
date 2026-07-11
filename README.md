@@ -33,7 +33,11 @@ python summarize_heatmetrics.py \
   data/station_summary.csv
 ```
 
-The pipeline requires at least 200 valid daily maximum/minimum-temperature pairs in a station-year. Review generated changes before committing them.
+The pipeline requires at least 200 valid daily maximum/minimum-temperature pairs in a station-year. It also reports calendar-day data completeness (365 or 366 days), percentages among valid observation days, and longest hot/warm-night streaks; missing dates and missing readings break a streak. Station-relative anomalies use the 1991–2020 baseline and require 20 valid baseline years. Historical percentiles use all valid station-years, half-weight ties, and require 10 valid years; unavailable context is stored as `null`. Review generated changes before committing them.
+
+The aggregate export omits the published San Juan Airport station, so the pipeline automatically includes the supplied `data/raw/san_juan_1960_2025.csv` supplemental export when rebuilding from `all_stations_1960_2025.csv`. This preserves the seven-station dashboard coverage; both source filenames are recorded in the generated metadata.
+
+The source has only daily maximum and minimum temperatures. It cannot support official heat index, WBGT, or feels-like estimates, because humidity, wind, radiation, and cloud data are not present. `oppressive_days` remains a project-defined temperature proxy.
 
 ## Run the tests
 
