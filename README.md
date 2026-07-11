@@ -22,9 +22,12 @@ python3 -m pip install -e ".[test]"
 
 ## Frontend development
 
-The map is a Vite + vanilla TypeScript application. Use Node.js 20.19+ (Node
-24 is used in CI) and npm. Install the frontend dependencies once after
-cloning, and again only when `package.json` changes:
+The map is a Vite + vanilla TypeScript application. Use Node.js 20.19+ and
+npm. The repository declares Node 24 in `.nvmrc`, which is also the major
+version used by GitHub Actions. With [nvm](https://github.com/nvm-sh/nvm), run
+`nvm use` from the project directory (or `nvm install` the first time).
+Install the frontend dependencies once after cloning, and again only when
+`package.json` changes:
 
 ```bash
 npm install
@@ -33,7 +36,7 @@ npm run dev
 
 Vite prints a local URL (normally <http://localhost:5173>); open that URL in a
 browser. `npm run dev` replaces `python -m http.server` for normal frontend
-development. Do not commit `node_modules/`.
+development. `node_modules/` is a local dependency cache and is not committed.
 
 The Python virtual environment and Node dependencies are separate tool
 environments. Run the focused frontend checks with `npm test`, strict
@@ -74,11 +77,25 @@ non-map way to choose every published station. Leaflet maps have inherent
 accessibility limitations; the search is the equivalent station-selection
 control. The application does not claim WCAG certification.
 
-Before deployment, run `npm run build` and `npm run preview`. Vite packages
-the canonical GeoJSON assets into `dist/`, uses repository-compatible asset
-URLs, and needs no frontend secrets or backend routes; refreshing a shared
-query-string URL works on static hosting such as GitHub Pages. Keep `dist/`
-ignored and confirm OpenStreetMap attribution remains visible.
+Before deployment, run `npm run build` and `npm run preview`. The GitHub Pages
+workflow uses `npm run build:pages`, which emits `/puerto-rico-heat-atlas-ai/`
+asset URLs while local development and previews remain rooted at `/`. Vite
+packages the canonical GeoJSON assets into `dist/` and needs no frontend
+secrets or backend routes; refreshing a shared query-string URL works on
+static hosting such as GitHub Pages. Keep `dist/` ignored and confirm
+OpenStreetMap attribution remains visible.
+
+## GitHub Pages deployment
+
+`.github/workflows/deploy-pages.yml` validates the frontend and Python project
+before publishing `dist/` to GitHub Pages whenever `main` changes, or when run
+manually. Merging an approved NOAA refresh pull request into `main` therefore
+triggers a fresh deployment automatically. Configure the repository’s Pages
+source as **GitHub Actions** in **Settings → Pages**. The public URL is
+<https://macplol.github.io/puerto-rico-heat-atlas-ai/>; no custom domain is
+configured. The release metadata does not include a social-preview image, so
+there is no manual preview-image generation step. See the
+[launch checklist](docs/launch-checklist.md) before enabling the public site.
 
 ## Refresh historical NOAA data
 
