@@ -20,6 +20,35 @@ python3 -m pip install --upgrade pip
 python3 -m pip install -e ".[test]"
 ```
 
+## Frontend development
+
+The map is a Vite + vanilla TypeScript application. Use Node.js 20.19+ (Node
+24 is used in CI) and npm. Install the frontend dependencies once after
+cloning, and again only when `package.json` changes:
+
+```bash
+npm install
+npm run dev
+```
+
+Vite prints a local URL (normally <http://localhost:5173>); open that URL in a
+browser. `npm run dev` replaces `python -m http.server` for normal frontend
+development. Do not commit `node_modules/`.
+
+The Python virtual environment and Node dependencies are separate tool
+environments. Run the focused frontend checks with `npm test`, strict
+TypeScript checking with `npm run typecheck`, and a complete production build
+with `npm run build`. Inspect the production build locally with:
+
+```bash
+npm run preview
+```
+
+The frontend lives in `src/`; its modules load the canonical map assets from
+`data/` through Vite asset URLs. `scripts/` and the top-level Python programs
+remain the independent NOAA processing and refresh pipeline; the frontend
+build neither moves nor regenerates its data files.
+
 ## Refresh historical NOAA data
 
 Historical temperature data comes from the official NOAA/NCEI Daily Summaries
@@ -114,13 +143,9 @@ pytest
 
 ## Open the dashboard locally
 
-Browsers block local file requests, so serve the project instead of opening `index.html` directly:
-
-```bash
-python -m http.server 8000
-```
-
-Open <http://localhost:8000> in a browser. Stop the server with `Ctrl+C` when finished.
+For normal use, follow **Frontend development** above. Browsers block local
+file requests, so do not open `index.html` directly. The old `python -m
+http.server` workflow is no longer the supported development server.
 
 For a quick manual map check:
 
@@ -131,7 +156,8 @@ For a quick manual map check:
 
 ## Repository layout
 
-- `index.html` — static Leaflet and Chart.js dashboard.
+- `index.html` — small Vite entry document.
+- `src/` — typed Leaflet, Chart.js, state, data-loading, and styling modules.
 - `process_heatmetrics_multi.py` — primary temperature-metric GeoJSON pipeline.
 - `summarize_heatmetrics.py` — CSV summary generator.
 - `data/` — source data, boundary, and derived GeoJSON.
