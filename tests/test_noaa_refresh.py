@@ -15,6 +15,7 @@ from scripts.noaa_daily import (
     normalize_records, validate_rows, write_canonical,
 )
 from scripts.refresh_data import run, validate_outputs
+from scripts.discover_noaa_stations import candidates
 
 
 def station(station_id="TEST"):
@@ -101,6 +102,15 @@ def test_seven_station_registry_is_valid():
     assert len(registry) == 7
     assert {sid for sid, item in registry.items() if item["published"]} == set(registry)
     assert "RQW00011641" in registry
+
+
+def test_station_discovery_reports_temperature_coverage():
+    station_line = f"{'RQW00011641':<11} {'18.4326':>8} {'-66.0106':>9} {'3.0':>6} {'SAN JUAN TEST':<30}"
+    tmax = f"{'RQW00011641':<11} {'18.4326':>8} {'-66.0106':>9} {'TMAX':<4} {'1960':>4} {'2025':>4}"
+    tmin = f"{'RQW00011641':<11} {'18.4326':>8} {'-66.0106':>9} {'TMIN':<4} {'1962':>4} {'2024':>4}"
+    found = list(candidates(station_line, f"{tmax}\n{tmin}"))
+    assert found[0][0] == "RQW00011641"
+    assert found[0][2:] == (1960, 2025, 63, True)
 
 
 def test_fixture_end_to_end_refresh_dry_run_and_no_change(tmp_path):
