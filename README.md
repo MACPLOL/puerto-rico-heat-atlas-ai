@@ -1,53 +1,71 @@
-# Caribbean Heat Stress Atlas
+# Puerto Rico Heat Atlas
 
-This is my graduate project to complete the requirements for graduation from the Polytechnic University of Puerto Rico, San Juan campus. It was made by Mauro A. Collazo Pabón, masters student, with guidance from my advisor, Professor Jeffrey Duffany, PhD.
+A static, map-based dashboard for exploring historical temperature-only heat metrics at Puerto Rico weather stations. It uses daily station maximum and minimum temperatures to show hot days, very hot days, warm nights, and a project-defined `oppressive_days` temperature proxy.
 
-At a high level, this project turns raw weather records into an interactive, map-based tool that shows when and where heat becomes a real human problem. The map focuses on hot days, and warm nights. These measures better capture when heat disrupts sleep, reduces performance, and becomes unsafe.
+These are not official heat index, WBGT, or “feels-like” values. The historical data has no humidity, wind, solar-radiation, or cloud observations for those calculations. See [the data schema](docs/data-schema.md) for thresholds, data-quality rules, and units.
 
-This matters for Puerto Rico and the Caribbean because it helps people make better day-to-day decisions about outdoor work, exercise, and comfort. It also serves as a strong capstone portfolio project, showing I can take messy real-world data, build meaningful analytics, and ship a polished web product.
+## First-time setup
 
-## What is in this repo
-- `index.html` is the interactive web map.
-- `data/` contains the raw inputs and the derived outputs used by the map.
-- `process_*.py` scripts turn the raw data into heat metrics and hot-day summaries.
-- `merge_*.py` scripts package outputs into GeoJSON for the map.
-- `plot_station_timeseries.py` generates time-series figures.
+You need Python 3.10 or newer. From the project folder, create and activate a virtual environment:
 
-## Data flow
-1. Start with raw station data in `data/all_stations_1960_2025.csv`.
-2. Run the processing scripts to compute heat metrics and hot-day counts.
-3. Merge outputs into GeoJSON files stored in `data/`.
-4. Open `index.html` to explore the results on the map.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
 
-## Outputs used by the map
-The map reads GeoJSON files in `data/`, such as:
-- `data/stations_heatmetrics_all.geojson`
-- `data/stations_all_hotdays.geojson`
-- `data/stations_multi_hotdays_filtered.geojson`
-- `data/pr_boundary.geojson`
+Install the processing and test dependencies:
 
-## Data dictionary / Methodology
-- Station: a weather location with a name and coordinates.
-- Raw record: a daily temperature reading from the station.
-- Hot day: a day that is much hotter than normal for that place (the project uses a threshold in the processing scripts).
-- Warm night: a night that stays hot and does not cool down much.
-- Heat metrics: summary numbers like how many hot days happened, or how strong the heat was.
-- GeoJSON: a map-friendly file type that stores points and their numbers.
+```bash
+python -m pip install --upgrade pip
+python -m pip install -e ".[test]"
+```
 
-Methodology (steps):
-1. Clean the raw station data.
-2. Compute daily values (highs and lows).
-3. Flag hot days and warm nights.
-4. Count them per station and time period.
-5. Save results as GeoJSON for the map.
-6. Put into html so that it shows in the map.
+## Rebuild the dashboard data
 
-## Validation / QA
-- Spot-check a few stations: pick 2-3 and compare map values with the raw CSV for the same dates.
-- Plot one station time series with `plot_station_timeseries.py` to make sure hot periods look plausible.
-- Open the map and confirm hot-day counts are not all zero or all the same.
-- Check that GeoJSON files load without errors in the browser console.
+The checked-in dashboard reads `data/stations_heatmetrics_all.geojson`. To recreate it from the supplied raw data:
 
-## Notes
-- The raw data can be large, so, for future uses, I should keep derived files small and focused for the map. Divide and conquer!
-- Adding more data into the map can be messy, so a duplicate file should be made to better see the results before adding them to the final version.
+```bash
+python process_heatmetrics_multi.py \
+  data/all_stations_1960_2025.csv \
+  data/stations_heatmetrics_all.geojson
+python summarize_heatmetrics.py \
+  data/stations_heatmetrics_all.geojson \
+  data/station_summary.csv
+```
+
+The pipeline requires at least 200 valid daily maximum/minimum-temperature pairs in a station-year. Review generated changes before committing them.
+
+## Run the tests
+
+With the virtual environment active:
+
+```bash
+pytest
+```
+
+## Open the dashboard locally
+
+Browsers block local file requests, so serve the project instead of opening `index.html` directly:
+
+```bash
+python -m http.server 8000
+```
+
+Open <http://localhost:8000> in a browser. Stop the server with `Ctrl+C` when finished.
+
+For a quick manual map check:
+
+1. Confirm that Puerto Rico’s boundary and station markers load and that only one **Time** year slider appears.
+2. Move the slider and choose each metric; stations without data for a selected year should disappear without an error.
+3. Press **Play** and then **Pause**. Open a station marker to confirm its popup and trend chart render.
+4. Change temperature units and use **Reset view** to confirm the controls still work.
+
+## Repository layout
+
+- `index.html` — static Leaflet and Chart.js dashboard.
+- `process_heatmetrics_multi.py` — primary temperature-metric GeoJSON pipeline.
+- `summarize_heatmetrics.py` — CSV summary generator.
+- `data/` — source data, boundary, and derived GeoJSON.
+- `tests/` — focused Python pipeline tests.
+- `docs/data-schema.md` — canonical map-data contract.
+- `docs/legacy-files.md` — overlapping and legacy outputs kept for review.
